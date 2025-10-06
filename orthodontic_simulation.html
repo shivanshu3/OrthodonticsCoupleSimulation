@@ -1,0 +1,397 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Orthodontic Couple Simulation</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 20px;
+            background-color: #f0f0f0;
+        }
+
+        h1 {
+            color: #333;
+            margin-bottom: 10px;
+        }
+
+        .info {
+            margin-bottom: 20px;
+            padding: 10px;
+            background-color: #fff;
+            border-radius: 5px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+
+        canvas {
+            border: 2px solid #333;
+            background-color: #fff;
+            cursor: move;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        }
+
+        .controls {
+            margin-top: 20px;
+        }
+
+        button {
+            padding: 10px 20px;
+            font-size: 16px;
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+        }
+
+        button:hover {
+            background-color: #45a049;
+        }
+
+        button:active {
+            transform: translateY(1px);
+        }
+
+        .instructions {
+            max-width: 800px;
+            margin-top: 20px;
+            padding: 15px;
+            background-color: #e8f4f8;
+            border-radius: 5px;
+            line-height: 1.6;
+        }
+    </style>
+</head>
+<body>
+    <h1>Orthodontic Couple Simulation</h1>
+
+    <div class="info">
+        <strong>Principle:</strong> A tooth rotates around its center of resistance (CR) regardless of where the couple is applied.
+    </div>
+
+    <canvas id="simulationCanvas" width="800" height="600"></canvas>
+
+    <div class="controls">
+        <button id="resetBtn">Reset</button>
+    </div>
+
+    <div class="instructions">
+        <strong>Instructions:</strong><br>
+        • Drag the red or blue arrow heads to move the force vectors<br>
+        • Drag the arrow shafts to adjust force magnitude<br>
+        • The tooth rotates continuously while you drag<br>
+        • Forces are automatically equal and opposite (pure couple)<br>
+        • Green lines show moment arms from CR to force lines
+    </div>
+
+    <script>
+        const canvas = document.getElementById('simulationCanvas');
+        const ctx = canvas.getContext('2d');
+        const resetBtn = document.getElementById('resetBtn');
+
+        // Tooth properties
+        const tooth = {
+            x: 400,
+            y: 300,
+            width: 60,
+            height: 100,
+            rotation: 0,
+            angularVelocity: 0
+        };
+
+        // Force vectors (couple)
+        let force1 = {
+            x: 300,
+            y: 200,
+            magnitude: 80,
+            angle: 0 // pointing right
+        };
+
+        let force2 = {
+            x: 500,
+            y: 400,
+            magnitude: 80,
+            angle: Math.PI // pointing left (opposite)
+        };
+
+        // Interaction state
+        let dragging = null;
+        let dragType = null; // 'head' or 'tail'
+        let isDragging = false;
+
+        // Reset function
+        function reset() {
+            tooth.rotation = 0;
+            tooth.angularVelocity = 0;
+            force1 = { x: 300, y: 200, magnitude: 80, angle: 0 };
+            force2 = { x: 500, y: 400, magnitude: 80, angle: Math.PI };
+        }
+
+        resetBtn.addEventListener('click', reset);
+
+        // Draw tooth
+        function drawTooth() {
+            ctx.save();
+            ctx.translate(tooth.x, tooth.y);
+            ctx.rotate(tooth.rotation);
+
+            // Crown (rounded rectangle)
+            ctx.fillStyle = '#f0f0f0';
+            ctx.strokeStyle = '#333';
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.roundRect(-tooth.width/2, -tooth.height/2, tooth.width, tooth.height * 0.4, 5);
+            ctx.fill();
+            ctx.stroke();
+
+            // Root (triangle)
+            ctx.beginPath();
+            ctx.moveTo(-tooth.width/2, -tooth.height/2 + tooth.height * 0.4);
+            ctx.lineTo(tooth.width/2, -tooth.height/2 + tooth.height * 0.4);
+            ctx.lineTo(0, tooth.height/2);
+            ctx.closePath();
+            ctx.fill();
+            ctx.stroke();
+
+            ctx.restore();
+
+            // Draw center of resistance
+            ctx.fillStyle = 'red';
+            ctx.beginPath();
+            ctx.arc(tooth.x, tooth.y, 5, 0, Math.PI * 2);
+            ctx.fill();
+
+            ctx.fillStyle = 'black';
+            ctx.font = '12px Arial';
+            ctx.fillText('CR', tooth.x + 8, tooth.y - 8);
+        }
+
+        // Draw arrow
+        function drawArrow(force, color) {
+            const endX = force.x + Math.cos(force.angle) * force.magnitude;
+            const endY = force.y + Math.sin(force.angle) * force.magnitude;
+
+            // Arrow shaft
+            ctx.strokeStyle = color;
+            ctx.lineWidth = 3;
+            ctx.beginPath();
+            ctx.moveTo(force.x, force.y);
+            ctx.lineTo(endX, endY);
+            ctx.stroke();
+
+            // Arrow head
+            const headLength = 15;
+            const headAngle = Math.PI / 6;
+            ctx.fillStyle = color;
+            ctx.beginPath();
+            ctx.moveTo(endX, endY);
+            ctx.lineTo(
+                endX - headLength * Math.cos(force.angle - headAngle),
+                endY - headLength * Math.sin(force.angle - headAngle)
+            );
+            ctx.lineTo(
+                endX - headLength * Math.cos(force.angle + headAngle),
+                endY - headLength * Math.sin(force.angle + headAngle)
+            );
+            ctx.closePath();
+            ctx.fill();
+
+            // Draw tail point (for dragging magnitude)
+            ctx.fillStyle = color;
+            ctx.globalAlpha = 0.5;
+            ctx.beginPath();
+            ctx.arc(force.x, force.y, 8, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.globalAlpha = 1;
+        }
+
+        // Draw moment arm
+        function drawMomentArm(force, color) {
+            // Calculate perpendicular distance from CR to force line
+            const forceEndX = force.x + Math.cos(force.angle) * force.magnitude * 2;
+            const forceEndY = force.y + Math.sin(force.angle) * force.magnitude * 2;
+
+            // Find closest point on force line to CR
+            const dx = forceEndX - force.x;
+            const dy = forceEndY - force.y;
+            const t = ((tooth.x - force.x) * dx + (tooth.y - force.y) * dy) / (dx * dx + dy * dy);
+            const closestX = force.x + t * dx;
+            const closestY = force.y + t * dy;
+
+            // Draw moment arm line
+            ctx.strokeStyle = color;
+            ctx.lineWidth = 1;
+            ctx.setLineDash([5, 5]);
+            ctx.beginPath();
+            ctx.moveTo(tooth.x, tooth.y);
+            ctx.lineTo(closestX, closestY);
+            ctx.stroke();
+            ctx.setLineDash([]);
+
+            // Calculate and display distance
+            const distance = Math.sqrt((tooth.x - closestX) ** 2 + (tooth.y - closestY) ** 2);
+            ctx.fillStyle = color;
+            ctx.font = '12px Arial';
+            const textX = (tooth.x + closestX) / 2;
+            const textY = (tooth.y + closestY) / 2;
+            ctx.fillText(`${distance.toFixed(1)}px`, textX + 5, textY - 5);
+
+            return distance;
+        }
+
+        // Calculate couple moment (torque)
+        function calculateCoupleMoment() {
+            const d1 = Math.sqrt(
+                Math.pow(tooth.x - force1.x - Math.cos(force1.angle) * 1000, 10) +
+                Math.pow(tooth.y - force1.y - Math.sin(force1.angle) * 1000, 10)
+            );
+
+            // Perpendicular distance from CR to force line
+            const perpDist1 = Math.abs(
+                (tooth.y - force1.y) * Math.cos(force1.angle) -
+                (tooth.x - force1.x) * Math.sin(force1.angle)
+            );
+
+            const perpDist2 = Math.abs(
+                (tooth.y - force2.y) * Math.cos(force2.angle) -
+                (tooth.x - force2.x) * Math.sin(force2.angle)
+            );
+
+            // Calculate moments (cross product)
+            const moment1 = force1.magnitude * perpDist1;
+            const moment2 = force2.magnitude * perpDist2;
+
+            // Determine rotation direction
+            const cross1 = (force1.x - tooth.x) * Math.sin(force1.angle) - (force1.y - tooth.y) * Math.cos(force1.angle);
+            const cross2 = (force2.x - tooth.x) * Math.sin(force2.angle) - (force2.y - tooth.y) * Math.cos(force2.angle);
+
+            return (cross1 > 0 ? moment1 : -moment1) + (cross2 > 0 ? moment2 : -moment2);
+        }
+
+        // Update and render
+        function animate() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            // Update rotation if dragging
+            if (isDragging) {
+                const coupleMoment = calculateCoupleMoment();
+                tooth.angularVelocity = coupleMoment / 50000; // Scale factor
+                tooth.rotation += tooth.angularVelocity;
+            } else {
+                tooth.angularVelocity = 0;
+            }
+
+            // Draw moment arms
+            drawMomentArm(force1, 'green');
+            drawMomentArm(force2, 'green');
+
+            // Draw forces
+            drawArrow(force1, 'blue');
+            drawArrow(force2, 'red');
+
+            // Draw tooth
+            drawTooth();
+
+            // Display info
+            ctx.fillStyle = 'black';
+            ctx.font = '14px Arial';
+            ctx.fillText(`Force Magnitude: ${force1.magnitude.toFixed(1)}N`, 10, 20);
+            ctx.fillText(`Couple Moment: ${calculateCoupleMoment().toFixed(1)} N·px`, 10, 40);
+            ctx.fillText(`Rotation: ${(tooth.rotation * 180 / Math.PI).toFixed(1)}°`, 10, 60);
+
+            requestAnimationFrame(animate);
+        }
+
+        // Mouse interaction
+        canvas.addEventListener('mousedown', (e) => {
+            const rect = canvas.getBoundingClientRect();
+            const mouseX = e.clientX - rect.left;
+            const mouseY = e.clientY - rect.top;
+
+            // Check force1 head
+            let endX = force1.x + Math.cos(force1.angle) * force1.magnitude;
+            let endY = force1.y + Math.sin(force1.angle) * force1.magnitude;
+            if (Math.sqrt((mouseX - endX) ** 2 + (mouseY - endY) ** 2) < 15) {
+                dragging = force1;
+                dragType = 'head';
+                isDragging = true;
+                return;
+            }
+
+            // Check force1 tail
+            if (Math.sqrt((mouseX - force1.x) ** 2 + (mouseY - force1.y) ** 2) < 10) {
+                dragging = force1;
+                dragType = 'tail';
+                isDragging = true;
+                return;
+            }
+
+            // Check force2 head
+            endX = force2.x + Math.cos(force2.angle) * force2.magnitude;
+            endY = force2.y + Math.sin(force2.angle) * force2.magnitude;
+            if (Math.sqrt((mouseX - endX) ** 2 + (mouseY - endY) ** 2) < 15) {
+                dragging = force2;
+                dragType = 'head';
+                isDragging = true;
+                return;
+            }
+
+            // Check force2 tail
+            if (Math.sqrt((mouseX - force2.x) ** 2 + (mouseY - force2.y) ** 2) < 10) {
+                dragging = force2;
+                dragType = 'tail';
+                isDragging = true;
+                return;
+            }
+        });
+
+        canvas.addEventListener('mousemove', (e) => {
+            if (!dragging) return;
+
+            const rect = canvas.getBoundingClientRect();
+            const mouseX = e.clientX - rect.left;
+            const mouseY = e.clientY - rect.top;
+
+            if (dragType === 'tail') {
+                // Move the force position
+                dragging.x = mouseX;
+                dragging.y = mouseY;
+            } else if (dragType === 'head') {
+                // Adjust magnitude and angle
+                const dx = mouseX - dragging.x;
+                const dy = mouseY - dragging.y;
+                const newMagnitude = Math.sqrt(dx * dx + dy * dy);
+                const newAngle = Math.atan2(dy, dx);
+
+                dragging.magnitude = Math.max(20, newMagnitude);
+                dragging.angle = newAngle;
+
+                // Update opposite force
+                const other = dragging === force1 ? force2 : force1;
+                other.magnitude = dragging.magnitude;
+                other.angle = dragging.angle + Math.PI; // Opposite direction
+            }
+        });
+
+        canvas.addEventListener('mouseup', () => {
+            dragging = null;
+            dragType = null;
+            isDragging = false;
+        });
+
+        canvas.addEventListener('mouseleave', () => {
+            dragging = null;
+            dragType = null;
+            isDragging = false;
+        });
+
+        // Start animation
+        animate();
+    </script>
+</body>
+</html>
