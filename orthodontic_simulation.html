@@ -402,17 +402,17 @@
                 const ax = netForceX / bar.mass;
                 const ay = netForceY / bar.mass;
 
-                // Update velocity (slowed down 10x)
-                bar.vx += ax * dt * 0.01;
-                bar.vy += ay * dt * 0.01;
+                // Update velocity (slowed down 200x total)
+                bar.vx += ax * dt * 0.0005;
+                bar.vy += ay * dt * 0.0005;
 
                 // Update position
                 bar.x += bar.vx * dt;
                 bar.y += bar.vy * dt;
 
-                // Angular acceleration (slowed down 10x)
+                // Angular acceleration (slowed down 200x total)
                 const angularAccel = netTorque / bar.momentOfInertia;
-                bar.angularVelocity += angularAccel * dt * 0.000005;
+                bar.angularVelocity += angularAccel * dt * 0.00000025;
 
                 // Update rotation
                 bar.rotation += bar.angularVelocity * dt;
