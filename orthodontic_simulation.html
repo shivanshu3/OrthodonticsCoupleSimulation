@@ -96,7 +96,7 @@
         <strong>Principle:</strong> A single force causes translation. Multiple forces cause both translation and rotation.
     </div>
 
-    <canvas id="simulationCanvas" width="800" height="600"></canvas>
+    <canvas id="simulationCanvas" width="1400" height="800"></canvas>
 
     <div class="controls">
         <button id="addForceBtn">Add Force</button>
@@ -130,8 +130,8 @@
 
         // Bar properties
         let bar = {
-            x: 400,
-            y: 300,
+            x: 700,
+            y: 400,
             vx: 0,
             vy: 0,
             rotation: 0,
@@ -179,8 +179,8 @@
         // Reset function
         function reset() {
             bar = {
-                x: 400,
-                y: 300,
+                x: 700,
+                y: 400,
                 vx: 0,
                 vy: 0,
                 rotation: 0,
@@ -402,17 +402,17 @@
                 const ax = netForceX / bar.mass;
                 const ay = netForceY / bar.mass;
 
-                // Update velocity
-                bar.vx += ax * dt * 0.1;
-                bar.vy += ay * dt * 0.1;
+                // Update velocity (slowed down 10x)
+                bar.vx += ax * dt * 0.01;
+                bar.vy += ay * dt * 0.01;
 
                 // Update position
                 bar.x += bar.vx * dt;
                 bar.y += bar.vy * dt;
 
-                // Angular acceleration
+                // Angular acceleration (slowed down 10x)
                 const angularAccel = netTorque / bar.momentOfInertia;
-                bar.angularVelocity += angularAccel * dt * 0.00005;
+                bar.angularVelocity += angularAccel * dt * 0.000005;
 
                 // Update rotation
                 bar.rotation += bar.angularVelocity * dt;
