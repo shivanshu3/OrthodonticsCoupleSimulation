@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Physics Simulation - Cylinder with Forces</title>
+    <title>Physics Simulation - Bar with Forces</title>
     <style>
         body {
             font-family: Arial, sans-serif;
@@ -59,11 +59,23 @@
             transform: translateY(1px);
         }
 
+        button.active-mode {
+            background-color: #ff9800;
+        }
+
         button.delete-mode {
             background-color: #f44336;
         }
 
         button.delete-mode:hover {
+            background-color: #da190b;
+        }
+
+        button.running {
+            background-color: #f44336;
+        }
+
+        button.running:hover {
             background-color: #da190b;
         }
 
@@ -78,10 +90,10 @@
     </style>
 </head>
 <body>
-    <h1>Physics Simulation - Cylinder with Forces</h1>
+    <h1>Physics Simulation - Bar with Forces</h1>
 
     <div class="info">
-        <strong>Principle:</strong> The cylinder moves and rotates freely based on applied forces.
+        <strong>Principle:</strong> A single force causes translation. Multiple forces cause both translation and rotation.
     </div>
 
     <canvas id="simulationCanvas" width="800" height="600"></canvas>
@@ -89,17 +101,19 @@
     <div class="controls">
         <button id="addForceBtn">Add Force</button>
         <button id="deleteForceBtn">Delete Force</button>
+        <button id="startBtn">Start</button>
         <button id="resetBtn">Reset</button>
     </div>
 
     <div class="instructions">
         <strong>Instructions:</strong><br>
-        • Click "Add Force" then click on canvas to place a new force vector<br>
+        • Click "Add Force" then click on canvas to place force vectors<br>
         • Drag arrow heads to change force direction and magnitude<br>
         • Drag arrow tails to reposition forces<br>
         • Click "Delete Force" then click on a force to remove it<br>
-        • The cylinder moves and rotates freely based on all applied forces<br>
-        • Drag forces to see continuous motion
+        • Click "Start" to begin simulation - the bar will move based on applied forces<br>
+        • Click "Stop" to pause and adjust forces<br>
+        • Single force = translation only; Multiple forces = translation + rotation
     </div>
 
     <script>
@@ -107,13 +121,15 @@
         const ctx = canvas.getContext('2d');
         const addForceBtn = document.getElementById('addForceBtn');
         const deleteForceBtn = document.getElementById('deleteForceBtn');
+        const startBtn = document.getElementById('startBtn');
         const resetBtn = document.getElementById('resetBtn');
 
         const GRID_SIZE = 50;
-        const CYLINDER_RADIUS = 40;
+        const BAR_WIDTH = 20;
+        const BAR_HEIGHT = 120;
 
-        // Cylinder properties
-        let cylinder = {
+        // Bar properties
+        let bar = {
             x: 400,
             y: 300,
             vx: 0,
@@ -121,16 +137,16 @@
             rotation: 0,
             angularVelocity: 0,
             mass: 10,
-            momentOfInertia: 0.5 * 10 * CYLINDER_RADIUS * CYLINDER_RADIUS
+            momentOfInertia: (1/12) * 10 * (BAR_WIDTH * BAR_WIDTH + BAR_HEIGHT * BAR_HEIGHT)
         };
 
         // Forces array
         let forces = [];
 
-        // Interaction state
+        // Simulation state
+        let isRunning = false;
         let dragging = null;
         let dragType = null;
-        let isDragging = false;
         let addForceMode = false;
         let deleteForceMode = false;
 
@@ -139,7 +155,7 @@
 
         // Reset function
         function reset() {
-            cylinder = {
+            bar = {
                 x: 400,
                 y: 300,
                 vx: 0,
@@ -147,31 +163,51 @@
                 rotation: 0,
                 angularVelocity: 0,
                 mass: 10,
-                momentOfInertia: 0.5 * 10 * CYLINDER_RADIUS * CYLINDER_RADIUS
+                momentOfInertia: (1/12) * 10 * (BAR_WIDTH * BAR_WIDTH + BAR_HEIGHT * BAR_HEIGHT)
             };
             forces = [];
+            isRunning = false;
             addForceMode = false;
             deleteForceMode = false;
             addForceBtn.style.backgroundColor = '#4CAF50';
             deleteForceBtn.style.backgroundColor = '#4CAF50';
+            startBtn.textContent = 'Start';
+            startBtn.classList.remove('running');
         }
 
         resetBtn.addEventListener('click', reset);
 
         addForceBtn.addEventListener('click', () => {
+            if (isRunning) return;
             addForceMode = !addForceMode;
             deleteForceMode = false;
             addForceBtn.style.backgroundColor = addForceMode ? '#ff9800' : '#4CAF50';
             deleteForceBtn.style.backgroundColor = '#4CAF50';
-            canvas.style.cursor = addForceMode ? 'crosshair' : 'move';
+            canvas.style.cursor = addForceMode ? 'crosshair' : 'default';
         });
 
         deleteForceBtn.addEventListener('click', () => {
+            if (isRunning) return;
             deleteForceMode = !deleteForceMode;
             addForceMode = false;
             deleteForceBtn.style.backgroundColor = deleteForceMode ? '#f44336' : '#4CAF50';
             addForceBtn.style.backgroundColor = '#4CAF50';
-            canvas.style.cursor = deleteForceMode ? 'pointer' : 'move';
+            canvas.style.cursor = deleteForceMode ? 'pointer' : 'default';
+        });
+
+        startBtn.addEventListener('click', () => {
+            isRunning = !isRunning;
+            startBtn.textContent = isRunning ? 'Stop' : 'Start';
+            if (isRunning) {
+                startBtn.classList.add('running');
+                addForceMode = false;
+                deleteForceMode = false;
+                addForceBtn.style.backgroundColor = '#4CAF50';
+                deleteForceBtn.style.backgroundColor = '#4CAF50';
+                canvas.style.cursor = 'default';
+            } else {
+                startBtn.classList.remove('running');
+            }
         });
 
         // Draw grid
@@ -194,40 +230,36 @@
             }
         }
 
-        // Draw cylinder
-        function drawCylinder() {
+        // Draw bar
+        function drawBar() {
             ctx.save();
-            ctx.translate(cylinder.x, cylinder.y);
-            ctx.rotate(cylinder.rotation);
+            ctx.translate(bar.x, bar.y);
+            ctx.rotate(bar.rotation);
 
-            // Cylinder body
-            ctx.fillStyle = '#95a5a6';
+            // Bar body (vertical rectangle)
+            ctx.fillStyle = '#3498db';
             ctx.strokeStyle = '#2c3e50';
             ctx.lineWidth = 3;
-            ctx.beginPath();
-            ctx.arc(0, 0, CYLINDER_RADIUS, 0, Math.PI * 2);
-            ctx.fill();
-            ctx.stroke();
+            ctx.fillRect(-BAR_WIDTH/2, -BAR_HEIGHT/2, BAR_WIDTH, BAR_HEIGHT);
+            ctx.strokeRect(-BAR_WIDTH/2, -BAR_HEIGHT/2, BAR_WIDTH, BAR_HEIGHT);
 
-            // Reference line to show rotation
-            ctx.strokeStyle = '#2c3e50';
-            ctx.lineWidth = 2;
+            // Reference mark at top
+            ctx.fillStyle = '#e74c3c';
             ctx.beginPath();
-            ctx.moveTo(0, 0);
-            ctx.lineTo(CYLINDER_RADIUS, 0);
-            ctx.stroke();
+            ctx.arc(0, -BAR_HEIGHT/2 + 10, 4, 0, Math.PI * 2);
+            ctx.fill();
 
             ctx.restore();
 
             // Draw center of mass
             ctx.fillStyle = 'red';
             ctx.beginPath();
-            ctx.arc(cylinder.x, cylinder.y, 5, 0, Math.PI * 2);
+            ctx.arc(bar.x, bar.y, 5, 0, Math.PI * 2);
             ctx.fill();
 
             ctx.fillStyle = 'black';
             ctx.font = '12px Arial';
-            ctx.fillText('CM', cylinder.x + 8, cylinder.y - 8);
+            ctx.fillText('CM', bar.x + 8, bar.y - 8);
         }
 
         // Draw arrow
@@ -281,7 +313,7 @@
 
             const dx = forceEndX - force.x;
             const dy = forceEndY - force.y;
-            const t = ((cylinder.x - force.x) * dx + (cylinder.y - force.y) * dy) / (dx * dx + dy * dy);
+            const t = ((bar.x - force.x) * dx + (bar.y - force.y) * dy) / (dx * dx + dy * dy);
             const closestX = force.x + t * dx;
             const closestY = force.y + t * dy;
 
@@ -289,12 +321,12 @@
             ctx.lineWidth = 1;
             ctx.setLineDash([5, 5]);
             ctx.beginPath();
-            ctx.moveTo(cylinder.x, cylinder.y);
+            ctx.moveTo(bar.x, bar.y);
             ctx.lineTo(closestX, closestY);
             ctx.stroke();
             ctx.setLineDash([]);
 
-            const distance = Math.sqrt((cylinder.x - closestX) ** 2 + (cylinder.y - closestY) ** 2);
+            const distance = Math.sqrt((bar.x - closestX) ** 2 + (bar.y - closestY) ** 2);
             return distance;
         }
 
@@ -312,8 +344,8 @@
                 netForceY += fy;
 
                 // Torque = r × F (cross product)
-                const rx = force.x - cylinder.x;
-                const ry = force.y - cylinder.y;
+                const rx = force.x - bar.x;
+                const ry = force.y - bar.y;
                 const torque = rx * fy - ry * fx;
                 netTorque += torque;
             });
@@ -323,54 +355,55 @@
 
         // Update physics
         function updatePhysics(dt) {
-            if (isDragging) {
+            if (isRunning && forces.length > 0) {
                 const { netForceX, netForceY, netTorque } = calculatePhysics();
 
                 // Linear acceleration
-                const ax = netForceX / cylinder.mass;
-                const ay = netForceY / cylinder.mass;
+                const ax = netForceX / bar.mass;
+                const ay = netForceY / bar.mass;
 
                 // Update velocity
-                cylinder.vx += ax * dt * 0.1;
-                cylinder.vy += ay * dt * 0.1;
+                bar.vx += ax * dt * 0.1;
+                bar.vy += ay * dt * 0.1;
 
                 // Update position
-                cylinder.x += cylinder.vx * dt;
-                cylinder.y += cylinder.vy * dt;
+                bar.x += bar.vx * dt;
+                bar.y += bar.vy * dt;
 
                 // Angular acceleration
-                const angularAccel = netTorque / cylinder.momentOfInertia;
-                cylinder.angularVelocity += angularAccel * dt * 0.0001;
+                const angularAccel = netTorque / bar.momentOfInertia;
+                bar.angularVelocity += angularAccel * dt * 0.00005;
 
                 // Update rotation
-                cylinder.rotation += cylinder.angularVelocity * dt;
+                bar.rotation += bar.angularVelocity * dt;
 
-                // Boundary check
-                if (cylinder.x < CYLINDER_RADIUS) {
-                    cylinder.x = CYLINDER_RADIUS;
-                    cylinder.vx = 0;
+                // Boundary check with bounce
+                const maxDimension = Math.max(BAR_WIDTH, BAR_HEIGHT);
+                if (bar.x < maxDimension) {
+                    bar.x = maxDimension;
+                    bar.vx *= -0.3;
                 }
-                if (cylinder.x > canvas.width - CYLINDER_RADIUS) {
-                    cylinder.x = canvas.width - CYLINDER_RADIUS;
-                    cylinder.vx = 0;
+                if (bar.x > canvas.width - maxDimension) {
+                    bar.x = canvas.width - maxDimension;
+                    bar.vx *= -0.3;
                 }
-                if (cylinder.y < CYLINDER_RADIUS) {
-                    cylinder.y = CYLINDER_RADIUS;
-                    cylinder.vy = 0;
+                if (bar.y < maxDimension) {
+                    bar.y = maxDimension;
+                    bar.vy *= -0.3;
                 }
-                if (cylinder.y > canvas.height - CYLINDER_RADIUS) {
-                    cylinder.y = canvas.height - CYLINDER_RADIUS;
-                    cylinder.vy = 0;
+                if (bar.y > canvas.height - maxDimension) {
+                    bar.y = canvas.height - maxDimension;
+                    bar.vy *= -0.3;
                 }
-            } else {
-                // Apply damping when not dragging
-                cylinder.vx *= 0.95;
-                cylinder.vy *= 0.95;
-                cylinder.angularVelocity *= 0.95;
+            } else if (!isRunning) {
+                // Apply damping when stopped
+                bar.vx *= 0.95;
+                bar.vy *= 0.95;
+                bar.angularVelocity *= 0.95;
 
-                cylinder.x += cylinder.vx * dt;
-                cylinder.y += cylinder.vy * dt;
-                cylinder.rotation += cylinder.angularVelocity * dt;
+                if (Math.abs(bar.vx) < 0.01) bar.vx = 0;
+                if (Math.abs(bar.vy) < 0.01) bar.vy = 0;
+                if (Math.abs(bar.angularVelocity) < 0.01) bar.angularVelocity = 0;
             }
         }
 
@@ -400,8 +433,8 @@
                 drawArrow(force, color, i);
             });
 
-            // Draw cylinder
-            drawCylinder();
+            // Draw bar
+            drawBar();
 
             // Display info
             const { netForceX, netForceY, netTorque } = calculatePhysics();
@@ -410,14 +443,17 @@
             ctx.fillText(`Forces: ${forces.length}`, 10, 20);
             ctx.fillText(`Net Force: (${netForceX.toFixed(1)}, ${netForceY.toFixed(1)})`, 10, 40);
             ctx.fillText(`Net Torque: ${netTorque.toFixed(1)}`, 10, 60);
-            ctx.fillText(`Position: (${cylinder.x.toFixed(0)}, ${cylinder.y.toFixed(0)})`, 10, 80);
-            ctx.fillText(`Rotation: ${(cylinder.rotation * 180 / Math.PI).toFixed(1)}°`, 10, 100);
+            ctx.fillText(`Position: (${bar.x.toFixed(0)}, ${bar.y.toFixed(0)})`, 10, 80);
+            ctx.fillText(`Rotation: ${(bar.rotation * 180 / Math.PI).toFixed(1)}°`, 10, 100);
+            ctx.fillText(`Status: ${isRunning ? 'RUNNING' : 'STOPPED'}`, 10, 120);
 
             requestAnimationFrame(animate);
         }
 
         // Mouse interaction
         canvas.addEventListener('mousedown', (e) => {
+            if (isRunning) return; // No interaction while running
+
             const rect = canvas.getBoundingClientRect();
             const mouseX = e.clientX - rect.left;
             const mouseY = e.clientY - rect.top;
@@ -431,7 +467,7 @@
                 });
                 addForceMode = false;
                 addForceBtn.style.backgroundColor = '#4CAF50';
-                canvas.style.cursor = 'move';
+                canvas.style.cursor = 'default';
                 return;
             }
 
@@ -451,7 +487,7 @@
                 }
                 deleteForceMode = false;
                 deleteForceBtn.style.backgroundColor = '#4CAF50';
-                canvas.style.cursor = 'move';
+                canvas.style.cursor = 'default';
                 return;
             }
 
@@ -464,21 +500,21 @@
                 if (Math.sqrt((mouseX - endX) ** 2 + (mouseY - endY) ** 2) < 15) {
                     dragging = force;
                     dragType = 'head';
-                    isDragging = true;
+                    canvas.style.cursor = 'move';
                     return;
                 }
 
                 if (Math.sqrt((mouseX - force.x) ** 2 + (mouseY - force.y) ** 2) < 10) {
                     dragging = force;
                     dragType = 'tail';
-                    isDragging = true;
+                    canvas.style.cursor = 'move';
                     return;
                 }
             }
         });
 
         canvas.addEventListener('mousemove', (e) => {
-            if (!dragging) return;
+            if (isRunning || !dragging) return;
 
             const rect = canvas.getBoundingClientRect();
             const mouseX = e.clientX - rect.left;
@@ -498,13 +534,14 @@
         canvas.addEventListener('mouseup', () => {
             dragging = null;
             dragType = null;
-            isDragging = false;
+            if (!addForceMode && !deleteForceMode) {
+                canvas.style.cursor = 'default';
+            }
         });
 
         canvas.addEventListener('mouseleave', () => {
             dragging = null;
             dragType = null;
-            isDragging = false;
         });
 
         // Start animation
