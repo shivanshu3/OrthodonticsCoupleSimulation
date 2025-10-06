@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Orthodontic Couple Simulation</title>
+    <title>Physics Simulation - Cylinder with Forces</title>
     <style>
         body {
             font-family: Arial, sans-serif;
@@ -30,12 +30,14 @@
         canvas {
             border: 2px solid #333;
             background-color: #fff;
-            cursor: move;
+            cursor: crosshair;
             box-shadow: 0 4px 6px rgba(0,0,0,0.1);
         }
 
         .controls {
             margin-top: 20px;
+            display: flex;
+            gap: 10px;
         }
 
         button {
@@ -57,6 +59,14 @@
             transform: translateY(1px);
         }
 
+        button.delete-mode {
+            background-color: #f44336;
+        }
+
+        button.delete-mode:hover {
+            background-color: #da190b;
+        }
+
         .instructions {
             max-width: 800px;
             margin-top: 20px;
@@ -68,111 +78,160 @@
     </style>
 </head>
 <body>
-    <h1>Orthodontic Couple Simulation</h1>
+    <h1>Physics Simulation - Cylinder with Forces</h1>
 
     <div class="info">
-        <strong>Principle:</strong> A tooth rotates around its center of resistance (CR) regardless of where the couple is applied.
+        <strong>Principle:</strong> The cylinder moves and rotates freely based on applied forces.
     </div>
 
     <canvas id="simulationCanvas" width="800" height="600"></canvas>
 
     <div class="controls">
+        <button id="addForceBtn">Add Force</button>
+        <button id="deleteForceBtn">Delete Force</button>
         <button id="resetBtn">Reset</button>
     </div>
 
     <div class="instructions">
         <strong>Instructions:</strong><br>
-        • Drag the red or blue arrow heads to move the force vectors<br>
-        • Drag the arrow shafts to adjust force magnitude<br>
-        • The tooth rotates continuously while you drag<br>
-        • Forces are automatically equal and opposite (pure couple)<br>
-        • Green lines show moment arms from CR to force lines
+        • Click "Add Force" then click on canvas to place a new force vector<br>
+        • Drag arrow heads to change force direction and magnitude<br>
+        • Drag arrow tails to reposition forces<br>
+        • Click "Delete Force" then click on a force to remove it<br>
+        • The cylinder moves and rotates freely based on all applied forces<br>
+        • Drag forces to see continuous motion
     </div>
 
     <script>
         const canvas = document.getElementById('simulationCanvas');
         const ctx = canvas.getContext('2d');
+        const addForceBtn = document.getElementById('addForceBtn');
+        const deleteForceBtn = document.getElementById('deleteForceBtn');
         const resetBtn = document.getElementById('resetBtn');
 
-        // Tooth properties
-        const tooth = {
+        const GRID_SIZE = 50;
+        const CYLINDER_RADIUS = 40;
+
+        // Cylinder properties
+        let cylinder = {
             x: 400,
             y: 300,
-            width: 60,
-            height: 100,
+            vx: 0,
+            vy: 0,
             rotation: 0,
-            angularVelocity: 0
+            angularVelocity: 0,
+            mass: 10,
+            momentOfInertia: 0.5 * 10 * CYLINDER_RADIUS * CYLINDER_RADIUS
         };
 
-        // Force vectors (couple)
-        let force1 = {
-            x: 300,
-            y: 200,
-            magnitude: 80,
-            angle: 0 // pointing right
-        };
-
-        let force2 = {
-            x: 500,
-            y: 400,
-            magnitude: 80,
-            angle: Math.PI // pointing left (opposite)
-        };
+        // Forces array
+        let forces = [];
 
         // Interaction state
         let dragging = null;
-        let dragType = null; // 'head' or 'tail'
+        let dragType = null;
         let isDragging = false;
+        let addForceMode = false;
+        let deleteForceMode = false;
+
+        // Colors for forces
+        const forceColors = ['#e74c3c', '#3498db', '#2ecc71', '#f39c12', '#9b59b6', '#1abc9c', '#e67e22', '#34495e'];
 
         // Reset function
         function reset() {
-            tooth.rotation = 0;
-            tooth.angularVelocity = 0;
-            force1 = { x: 300, y: 200, magnitude: 80, angle: 0 };
-            force2 = { x: 500, y: 400, magnitude: 80, angle: Math.PI };
+            cylinder = {
+                x: 400,
+                y: 300,
+                vx: 0,
+                vy: 0,
+                rotation: 0,
+                angularVelocity: 0,
+                mass: 10,
+                momentOfInertia: 0.5 * 10 * CYLINDER_RADIUS * CYLINDER_RADIUS
+            };
+            forces = [];
+            addForceMode = false;
+            deleteForceMode = false;
+            addForceBtn.style.backgroundColor = '#4CAF50';
+            deleteForceBtn.style.backgroundColor = '#4CAF50';
         }
 
         resetBtn.addEventListener('click', reset);
 
-        // Draw tooth
-        function drawTooth() {
-            ctx.save();
-            ctx.translate(tooth.x, tooth.y);
-            ctx.rotate(tooth.rotation);
+        addForceBtn.addEventListener('click', () => {
+            addForceMode = !addForceMode;
+            deleteForceMode = false;
+            addForceBtn.style.backgroundColor = addForceMode ? '#ff9800' : '#4CAF50';
+            deleteForceBtn.style.backgroundColor = '#4CAF50';
+            canvas.style.cursor = addForceMode ? 'crosshair' : 'move';
+        });
 
-            // Crown (rounded rectangle)
-            ctx.fillStyle = '#f0f0f0';
-            ctx.strokeStyle = '#333';
-            ctx.lineWidth = 2;
+        deleteForceBtn.addEventListener('click', () => {
+            deleteForceMode = !deleteForceMode;
+            addForceMode = false;
+            deleteForceBtn.style.backgroundColor = deleteForceMode ? '#f44336' : '#4CAF50';
+            addForceBtn.style.backgroundColor = '#4CAF50';
+            canvas.style.cursor = deleteForceMode ? 'pointer' : 'move';
+        });
+
+        // Draw grid
+        function drawGrid() {
+            ctx.strokeStyle = '#e0e0e0';
+            ctx.lineWidth = 1;
+
+            for (let x = 0; x <= canvas.width; x += GRID_SIZE) {
+                ctx.beginPath();
+                ctx.moveTo(x, 0);
+                ctx.lineTo(x, canvas.height);
+                ctx.stroke();
+            }
+
+            for (let y = 0; y <= canvas.height; y += GRID_SIZE) {
+                ctx.beginPath();
+                ctx.moveTo(0, y);
+                ctx.lineTo(canvas.width, y);
+                ctx.stroke();
+            }
+        }
+
+        // Draw cylinder
+        function drawCylinder() {
+            ctx.save();
+            ctx.translate(cylinder.x, cylinder.y);
+            ctx.rotate(cylinder.rotation);
+
+            // Cylinder body
+            ctx.fillStyle = '#95a5a6';
+            ctx.strokeStyle = '#2c3e50';
+            ctx.lineWidth = 3;
             ctx.beginPath();
-            ctx.roundRect(-tooth.width/2, -tooth.height/2, tooth.width, tooth.height * 0.4, 5);
+            ctx.arc(0, 0, CYLINDER_RADIUS, 0, Math.PI * 2);
             ctx.fill();
             ctx.stroke();
 
-            // Root (triangle)
+            // Reference line to show rotation
+            ctx.strokeStyle = '#2c3e50';
+            ctx.lineWidth = 2;
             ctx.beginPath();
-            ctx.moveTo(-tooth.width/2, -tooth.height/2 + tooth.height * 0.4);
-            ctx.lineTo(tooth.width/2, -tooth.height/2 + tooth.height * 0.4);
-            ctx.lineTo(0, tooth.height/2);
-            ctx.closePath();
-            ctx.fill();
+            ctx.moveTo(0, 0);
+            ctx.lineTo(CYLINDER_RADIUS, 0);
             ctx.stroke();
 
             ctx.restore();
 
-            // Draw center of resistance
+            // Draw center of mass
             ctx.fillStyle = 'red';
             ctx.beginPath();
-            ctx.arc(tooth.x, tooth.y, 5, 0, Math.PI * 2);
+            ctx.arc(cylinder.x, cylinder.y, 5, 0, Math.PI * 2);
             ctx.fill();
 
             ctx.fillStyle = 'black';
             ctx.font = '12px Arial';
-            ctx.fillText('CR', tooth.x + 8, tooth.y - 8);
+            ctx.fillText('CM', cylinder.x + 8, cylinder.y - 8);
         }
 
         // Draw arrow
-        function drawArrow(force, color) {
+        function drawArrow(force, color, index) {
             const endX = force.x + Math.cos(force.angle) * force.magnitude;
             const endY = force.y + Math.sin(force.angle) * force.magnitude;
 
@@ -201,108 +260,158 @@
             ctx.closePath();
             ctx.fill();
 
-            // Draw tail point (for dragging magnitude)
+            // Draw tail point
             ctx.fillStyle = color;
             ctx.globalAlpha = 0.5;
             ctx.beginPath();
             ctx.arc(force.x, force.y, 8, 0, Math.PI * 2);
             ctx.fill();
             ctx.globalAlpha = 1;
+
+            // Label
+            ctx.fillStyle = color;
+            ctx.font = 'bold 12px Arial';
+            ctx.fillText(`F${index + 1}`, force.x - 20, force.y - 10);
         }
 
         // Draw moment arm
         function drawMomentArm(force, color) {
-            // Calculate perpendicular distance from CR to force line
-            const forceEndX = force.x + Math.cos(force.angle) * force.magnitude * 2;
-            const forceEndY = force.y + Math.sin(force.angle) * force.magnitude * 2;
+            const forceEndX = force.x + Math.cos(force.angle) * 1000;
+            const forceEndY = force.y + Math.sin(force.angle) * 1000;
 
-            // Find closest point on force line to CR
             const dx = forceEndX - force.x;
             const dy = forceEndY - force.y;
-            const t = ((tooth.x - force.x) * dx + (tooth.y - force.y) * dy) / (dx * dx + dy * dy);
+            const t = ((cylinder.x - force.x) * dx + (cylinder.y - force.y) * dy) / (dx * dx + dy * dy);
             const closestX = force.x + t * dx;
             const closestY = force.y + t * dy;
 
-            // Draw moment arm line
             ctx.strokeStyle = color;
             ctx.lineWidth = 1;
             ctx.setLineDash([5, 5]);
             ctx.beginPath();
-            ctx.moveTo(tooth.x, tooth.y);
+            ctx.moveTo(cylinder.x, cylinder.y);
             ctx.lineTo(closestX, closestY);
             ctx.stroke();
             ctx.setLineDash([]);
 
-            // Calculate and display distance
-            const distance = Math.sqrt((tooth.x - closestX) ** 2 + (tooth.y - closestY) ** 2);
-            ctx.fillStyle = color;
-            ctx.font = '12px Arial';
-            const textX = (tooth.x + closestX) / 2;
-            const textY = (tooth.y + closestY) / 2;
-            ctx.fillText(`${distance.toFixed(1)}px`, textX + 5, textY - 5);
-
+            const distance = Math.sqrt((cylinder.x - closestX) ** 2 + (cylinder.y - closestY) ** 2);
             return distance;
         }
 
-        // Calculate couple moment (torque)
-        function calculateCoupleMoment() {
-            const d1 = Math.sqrt(
-                Math.pow(tooth.x - force1.x - Math.cos(force1.angle) * 1000, 10) +
-                Math.pow(tooth.y - force1.y - Math.sin(force1.angle) * 1000, 10)
-            );
+        // Calculate net force and torque
+        function calculatePhysics() {
+            let netForceX = 0;
+            let netForceY = 0;
+            let netTorque = 0;
 
-            // Perpendicular distance from CR to force line
-            const perpDist1 = Math.abs(
-                (tooth.y - force1.y) * Math.cos(force1.angle) -
-                (tooth.x - force1.x) * Math.sin(force1.angle)
-            );
+            forces.forEach(force => {
+                const fx = Math.cos(force.angle) * force.magnitude;
+                const fy = Math.sin(force.angle) * force.magnitude;
 
-            const perpDist2 = Math.abs(
-                (tooth.y - force2.y) * Math.cos(force2.angle) -
-                (tooth.x - force2.x) * Math.sin(force2.angle)
-            );
+                netForceX += fx;
+                netForceY += fy;
 
-            // Calculate moments (cross product)
-            const moment1 = force1.magnitude * perpDist1;
-            const moment2 = force2.magnitude * perpDist2;
+                // Torque = r × F (cross product)
+                const rx = force.x - cylinder.x;
+                const ry = force.y - cylinder.y;
+                const torque = rx * fy - ry * fx;
+                netTorque += torque;
+            });
 
-            // Determine rotation direction
-            const cross1 = (force1.x - tooth.x) * Math.sin(force1.angle) - (force1.y - tooth.y) * Math.cos(force1.angle);
-            const cross2 = (force2.x - tooth.x) * Math.sin(force2.angle) - (force2.y - tooth.y) * Math.cos(force2.angle);
+            return { netForceX, netForceY, netTorque };
+        }
 
-            return (cross1 > 0 ? moment1 : -moment1) + (cross2 > 0 ? moment2 : -moment2);
+        // Update physics
+        function updatePhysics(dt) {
+            if (isDragging) {
+                const { netForceX, netForceY, netTorque } = calculatePhysics();
+
+                // Linear acceleration
+                const ax = netForceX / cylinder.mass;
+                const ay = netForceY / cylinder.mass;
+
+                // Update velocity
+                cylinder.vx += ax * dt * 0.1;
+                cylinder.vy += ay * dt * 0.1;
+
+                // Update position
+                cylinder.x += cylinder.vx * dt;
+                cylinder.y += cylinder.vy * dt;
+
+                // Angular acceleration
+                const angularAccel = netTorque / cylinder.momentOfInertia;
+                cylinder.angularVelocity += angularAccel * dt * 0.0001;
+
+                // Update rotation
+                cylinder.rotation += cylinder.angularVelocity * dt;
+
+                // Boundary check
+                if (cylinder.x < CYLINDER_RADIUS) {
+                    cylinder.x = CYLINDER_RADIUS;
+                    cylinder.vx = 0;
+                }
+                if (cylinder.x > canvas.width - CYLINDER_RADIUS) {
+                    cylinder.x = canvas.width - CYLINDER_RADIUS;
+                    cylinder.vx = 0;
+                }
+                if (cylinder.y < CYLINDER_RADIUS) {
+                    cylinder.y = CYLINDER_RADIUS;
+                    cylinder.vy = 0;
+                }
+                if (cylinder.y > canvas.height - CYLINDER_RADIUS) {
+                    cylinder.y = canvas.height - CYLINDER_RADIUS;
+                    cylinder.vy = 0;
+                }
+            } else {
+                // Apply damping when not dragging
+                cylinder.vx *= 0.95;
+                cylinder.vy *= 0.95;
+                cylinder.angularVelocity *= 0.95;
+
+                cylinder.x += cylinder.vx * dt;
+                cylinder.y += cylinder.vy * dt;
+                cylinder.rotation += cylinder.angularVelocity * dt;
+            }
         }
 
         // Update and render
-        function animate() {
+        let lastTime = performance.now();
+        function animate(currentTime) {
+            const dt = currentTime - lastTime;
+            lastTime = currentTime;
+
             ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-            // Update rotation if dragging
-            if (isDragging) {
-                const coupleMoment = calculateCoupleMoment();
-                tooth.angularVelocity = coupleMoment / 50000; // Scale factor
-                tooth.rotation += tooth.angularVelocity;
-            } else {
-                tooth.angularVelocity = 0;
-            }
+            // Draw grid
+            drawGrid();
+
+            // Update physics
+            updatePhysics(dt);
 
             // Draw moment arms
-            drawMomentArm(force1, 'green');
-            drawMomentArm(force2, 'green');
+            forces.forEach((force, i) => {
+                const color = forceColors[i % forceColors.length];
+                drawMomentArm(force, color);
+            });
 
             // Draw forces
-            drawArrow(force1, 'blue');
-            drawArrow(force2, 'red');
+            forces.forEach((force, i) => {
+                const color = forceColors[i % forceColors.length];
+                drawArrow(force, color, i);
+            });
 
-            // Draw tooth
-            drawTooth();
+            // Draw cylinder
+            drawCylinder();
 
             // Display info
+            const { netForceX, netForceY, netTorque } = calculatePhysics();
             ctx.fillStyle = 'black';
             ctx.font = '14px Arial';
-            ctx.fillText(`Force Magnitude: ${force1.magnitude.toFixed(1)}N`, 10, 20);
-            ctx.fillText(`Couple Moment: ${calculateCoupleMoment().toFixed(1)} N·px`, 10, 40);
-            ctx.fillText(`Rotation: ${(tooth.rotation * 180 / Math.PI).toFixed(1)}°`, 10, 60);
+            ctx.fillText(`Forces: ${forces.length}`, 10, 20);
+            ctx.fillText(`Net Force: (${netForceX.toFixed(1)}, ${netForceY.toFixed(1)})`, 10, 40);
+            ctx.fillText(`Net Torque: ${netTorque.toFixed(1)}`, 10, 60);
+            ctx.fillText(`Position: (${cylinder.x.toFixed(0)}, ${cylinder.y.toFixed(0)})`, 10, 80);
+            ctx.fillText(`Rotation: ${(cylinder.rotation * 180 / Math.PI).toFixed(1)}°`, 10, 100);
 
             requestAnimationFrame(animate);
         }
@@ -313,40 +422,58 @@
             const mouseX = e.clientX - rect.left;
             const mouseY = e.clientY - rect.top;
 
-            // Check force1 head
-            let endX = force1.x + Math.cos(force1.angle) * force1.magnitude;
-            let endY = force1.y + Math.sin(force1.angle) * force1.magnitude;
-            if (Math.sqrt((mouseX - endX) ** 2 + (mouseY - endY) ** 2) < 15) {
-                dragging = force1;
-                dragType = 'head';
-                isDragging = true;
+            if (addForceMode) {
+                forces.push({
+                    x: mouseX,
+                    y: mouseY,
+                    magnitude: 60,
+                    angle: 0
+                });
+                addForceMode = false;
+                addForceBtn.style.backgroundColor = '#4CAF50';
+                canvas.style.cursor = 'move';
                 return;
             }
 
-            // Check force1 tail
-            if (Math.sqrt((mouseX - force1.x) ** 2 + (mouseY - force1.y) ** 2) < 10) {
-                dragging = force1;
-                dragType = 'tail';
-                isDragging = true;
+            if (deleteForceMode) {
+                for (let i = forces.length - 1; i >= 0; i--) {
+                    const force = forces[i];
+                    const endX = force.x + Math.cos(force.angle) * force.magnitude;
+                    const endY = force.y + Math.sin(force.angle) * force.magnitude;
+
+                    const distToHead = Math.sqrt((mouseX - endX) ** 2 + (mouseY - endY) ** 2);
+                    const distToTail = Math.sqrt((mouseX - force.x) ** 2 + (mouseY - force.y) ** 2);
+
+                    if (distToHead < 15 || distToTail < 10) {
+                        forces.splice(i, 1);
+                        break;
+                    }
+                }
+                deleteForceMode = false;
+                deleteForceBtn.style.backgroundColor = '#4CAF50';
+                canvas.style.cursor = 'move';
                 return;
             }
 
-            // Check force2 head
-            endX = force2.x + Math.cos(force2.angle) * force2.magnitude;
-            endY = force2.y + Math.sin(force2.angle) * force2.magnitude;
-            if (Math.sqrt((mouseX - endX) ** 2 + (mouseY - endY) ** 2) < 15) {
-                dragging = force2;
-                dragType = 'head';
-                isDragging = true;
-                return;
-            }
+            // Check for dragging forces
+            for (let i = forces.length - 1; i >= 0; i--) {
+                const force = forces[i];
+                const endX = force.x + Math.cos(force.angle) * force.magnitude;
+                const endY = force.y + Math.sin(force.angle) * force.magnitude;
 
-            // Check force2 tail
-            if (Math.sqrt((mouseX - force2.x) ** 2 + (mouseY - force2.y) ** 2) < 10) {
-                dragging = force2;
-                dragType = 'tail';
-                isDragging = true;
-                return;
+                if (Math.sqrt((mouseX - endX) ** 2 + (mouseY - endY) ** 2) < 15) {
+                    dragging = force;
+                    dragType = 'head';
+                    isDragging = true;
+                    return;
+                }
+
+                if (Math.sqrt((mouseX - force.x) ** 2 + (mouseY - force.y) ** 2) < 10) {
+                    dragging = force;
+                    dragType = 'tail';
+                    isDragging = true;
+                    return;
+                }
             }
         });
 
@@ -358,23 +485,13 @@
             const mouseY = e.clientY - rect.top;
 
             if (dragType === 'tail') {
-                // Move the force position
                 dragging.x = mouseX;
                 dragging.y = mouseY;
             } else if (dragType === 'head') {
-                // Adjust magnitude and angle
                 const dx = mouseX - dragging.x;
                 const dy = mouseY - dragging.y;
-                const newMagnitude = Math.sqrt(dx * dx + dy * dy);
-                const newAngle = Math.atan2(dy, dx);
-
-                dragging.magnitude = Math.max(20, newMagnitude);
-                dragging.angle = newAngle;
-
-                // Update opposite force
-                const other = dragging === force1 ? force2 : force1;
-                other.magnitude = dragging.magnitude;
-                other.angle = dragging.angle + Math.PI; // Opposite direction
+                dragging.magnitude = Math.max(20, Math.sqrt(dx * dx + dy * dy));
+                dragging.angle = Math.atan2(dy, dx);
             }
         });
 
@@ -391,7 +508,7 @@
         });
 
         // Start animation
-        animate();
+        animate(performance.now());
     </script>
 </body>
 </html>
