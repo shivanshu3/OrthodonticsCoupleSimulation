@@ -140,8 +140,31 @@
             momentOfInertia: (1/12) * 10 * (BAR_WIDTH * BAR_WIDTH + BAR_HEIGHT * BAR_HEIGHT)
         };
 
-        // Forces array
+        // Forces array - now stored in bar-relative coordinates
         let forces = [];
+
+        // Helper functions for coordinate conversion
+        function worldToBar(worldX, worldY) {
+            // Convert world coordinates to bar-relative coordinates
+            const dx = worldX - bar.x;
+            const dy = worldY - bar.y;
+            const cos = Math.cos(-bar.rotation);
+            const sin = Math.sin(-bar.rotation);
+            return {
+                localX: dx * cos - dy * sin,
+                localY: dx * sin + dy * cos
+            };
+        }
+
+        function barToWorld(localX, localY) {
+            // Convert bar-relative coordinates to world coordinates
+            const cos = Math.cos(bar.rotation);
+            const sin = Math.sin(bar.rotation);
+            return {
+                worldX: bar.x + localX * cos - localY * sin,
+                worldY: bar.y + localX * sin + localY * cos
+            };
+        }
 
         // Simulation state
         let isRunning = false;
@@ -267,14 +290,20 @@
 
         // Draw arrow
         function drawArrow(force, color, index) {
-            const endX = force.x + Math.cos(force.angle) * force.magnitude;
-            const endY = force.y + Math.sin(force.angle) * force.magnitude;
+            // Convert local coordinates to world coordinates
+            const worldPos = barToWorld(force.localX, force.localY);
+            const worldAngle = force.localAngle + bar.rotation;
+
+            const startX = worldPos.worldX;
+            const startY = worldPos.worldY;
+            const endX = startX + Math.cos(worldAngle) * force.magnitude;
+            const endY = startY + Math.sin(worldAngle) * force.magnitude;
 
             // Arrow shaft
             ctx.strokeStyle = color;
             ctx.lineWidth = 3;
             ctx.beginPath();
-            ctx.moveTo(force.x, force.y);
+            ctx.moveTo(startX, startY);
             ctx.lineTo(endX, endY);
             ctx.stroke();
 
@@ -285,12 +314,12 @@
             ctx.beginPath();
             ctx.moveTo(endX, endY);
             ctx.lineTo(
-                endX - headLength * Math.cos(force.angle - headAngle),
-                endY - headLength * Math.sin(force.angle - headAngle)
+                endX - headLength * Math.cos(worldAngle - headAngle),
+                endY - headLength * Math.sin(worldAngle - headAngle)
             );
             ctx.lineTo(
-                endX - headLength * Math.cos(force.angle + headAngle),
-                endY - headLength * Math.sin(force.angle + headAngle)
+                endX - headLength * Math.cos(worldAngle + headAngle),
+                endY - headLength * Math.sin(worldAngle + headAngle)
             );
             ctx.closePath();
             ctx.fill();
@@ -299,26 +328,31 @@
             ctx.fillStyle = color;
             ctx.globalAlpha = 0.5;
             ctx.beginPath();
-            ctx.arc(force.x, force.y, 8, 0, Math.PI * 2);
+            ctx.arc(startX, startY, 8, 0, Math.PI * 2);
             ctx.fill();
             ctx.globalAlpha = 1;
 
             // Label
             ctx.fillStyle = color;
             ctx.font = 'bold 12px Arial';
-            ctx.fillText(`F${index + 1}`, force.x - 20, force.y - 10);
+            ctx.fillText(`F${index + 1}`, startX - 20, startY - 10);
         }
 
         // Draw moment arm
         function drawMomentArm(force, color) {
-            const forceEndX = force.x + Math.cos(force.angle) * 1000;
-            const forceEndY = force.y + Math.sin(force.angle) * 1000;
+            const worldPos = barToWorld(force.localX, force.localY);
+            const worldAngle = force.localAngle + bar.rotation;
 
-            const dx = forceEndX - force.x;
-            const dy = forceEndY - force.y;
-            const t = ((bar.x - force.x) * dx + (bar.y - force.y) * dy) / (dx * dx + dy * dy);
-            const closestX = force.x + t * dx;
-            const closestY = force.y + t * dy;
+            const forceX = worldPos.worldX;
+            const forceY = worldPos.worldY;
+            const forceEndX = forceX + Math.cos(worldAngle) * 1000;
+            const forceEndY = forceY + Math.sin(worldAngle) * 1000;
+
+            const dx = forceEndX - forceX;
+            const dy = forceEndY - forceY;
+            const t = ((bar.x - forceX) * dx + (bar.y - forceY) * dy) / (dx * dx + dy * dy);
+            const closestX = forceX + t * dx;
+            const closestY = forceY + t * dy;
 
             ctx.strokeStyle = color;
             ctx.lineWidth = 1;
@@ -340,15 +374,18 @@
             let netTorque = 0;
 
             forces.forEach(force => {
-                const fx = Math.cos(force.angle) * force.magnitude;
-                const fy = Math.sin(force.angle) * force.magnitude;
+                const worldPos = barToWorld(force.localX, force.localY);
+                const worldAngle = force.localAngle + bar.rotation;
+
+                const fx = Math.cos(worldAngle) * force.magnitude;
+                const fy = Math.sin(worldAngle) * force.magnitude;
 
                 netForceX += fx;
                 netForceY += fy;
 
                 // Torque = r × F (cross product)
-                const rx = force.x - bar.x;
-                const ry = force.y - bar.y;
+                const rx = worldPos.worldX - bar.x;
+                const ry = worldPos.worldY - bar.y;
                 const torque = rx * fy - ry * fx;
                 netTorque += torque;
             });
@@ -462,11 +499,13 @@
             const mouseY = e.clientY - rect.top;
 
             if (addForceMode) {
+                // Convert world coordinates to bar-local coordinates
+                const local = worldToBar(mouseX, mouseY);
                 forces.push({
-                    x: mouseX,
-                    y: mouseY,
+                    localX: local.localX,
+                    localY: local.localY,
                     magnitude: 60,
-                    angle: 0
+                    localAngle: 0 // Angle relative to bar orientation
                 });
                 addForceMode = false;
                 addForceBtn.style.backgroundColor = '#4CAF50';
@@ -477,11 +516,16 @@
             if (deleteForceMode) {
                 for (let i = forces.length - 1; i >= 0; i--) {
                     const force = forces[i];
-                    const endX = force.x + Math.cos(force.angle) * force.magnitude;
-                    const endY = force.y + Math.sin(force.angle) * force.magnitude;
+                    const worldPos = barToWorld(force.localX, force.localY);
+                    const worldAngle = force.localAngle + bar.rotation;
+
+                    const startX = worldPos.worldX;
+                    const startY = worldPos.worldY;
+                    const endX = startX + Math.cos(worldAngle) * force.magnitude;
+                    const endY = startY + Math.sin(worldAngle) * force.magnitude;
 
                     const distToHead = Math.sqrt((mouseX - endX) ** 2 + (mouseY - endY) ** 2);
-                    const distToTail = Math.sqrt((mouseX - force.x) ** 2 + (mouseY - force.y) ** 2);
+                    const distToTail = Math.sqrt((mouseX - startX) ** 2 + (mouseY - startY) ** 2);
 
                     if (distToHead < 15 || distToTail < 10) {
                         forces.splice(i, 1);
@@ -497,8 +541,13 @@
             // Check for dragging forces
             for (let i = forces.length - 1; i >= 0; i--) {
                 const force = forces[i];
-                const endX = force.x + Math.cos(force.angle) * force.magnitude;
-                const endY = force.y + Math.sin(force.angle) * force.magnitude;
+                const worldPos = barToWorld(force.localX, force.localY);
+                const worldAngle = force.localAngle + bar.rotation;
+
+                const startX = worldPos.worldX;
+                const startY = worldPos.worldY;
+                const endX = startX + Math.cos(worldAngle) * force.magnitude;
+                const endY = startY + Math.sin(worldAngle) * force.magnitude;
 
                 if (Math.sqrt((mouseX - endX) ** 2 + (mouseY - endY) ** 2) < 15) {
                     dragging = force;
@@ -507,7 +556,7 @@
                     return;
                 }
 
-                if (Math.sqrt((mouseX - force.x) ** 2 + (mouseY - force.y) ** 2) < 10) {
+                if (Math.sqrt((mouseX - startX) ** 2 + (mouseY - startY) ** 2) < 10) {
                     dragging = force;
                     dragType = 'tail';
                     canvas.style.cursor = 'move';
@@ -524,13 +573,20 @@
             const mouseY = e.clientY - rect.top;
 
             if (dragType === 'tail') {
-                dragging.x = mouseX;
-                dragging.y = mouseY;
+                // Update the local position of the force
+                const local = worldToBar(mouseX, mouseY);
+                dragging.localX = local.localX;
+                dragging.localY = local.localY;
             } else if (dragType === 'head') {
-                const dx = mouseX - dragging.x;
-                const dy = mouseY - dragging.y;
+                // Update magnitude and angle in local coordinates
+                const worldPos = barToWorld(dragging.localX, dragging.localY);
+                const dx = mouseX - worldPos.worldX;
+                const dy = mouseY - worldPos.worldY;
                 dragging.magnitude = Math.max(20, Math.sqrt(dx * dx + dy * dy));
-                dragging.angle = Math.atan2(dy, dx);
+
+                // Calculate world angle, then convert to local angle
+                const worldAngle = Math.atan2(dy, dx);
+                dragging.localAngle = worldAngle - bar.rotation;
             }
         });
 
