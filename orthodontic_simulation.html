@@ -12,6 +12,7 @@
             align-items: center;
             padding: 20px;
             background-color: #f0f0f0;
+            margin: 0;
         }
 
         h1 {
@@ -25,6 +26,59 @@
             background-color: #fff;
             border-radius: 5px;
             box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+
+        .main-container {
+            display: flex;
+            gap: 20px;
+            align-items: flex-start;
+        }
+
+        .sidebar {
+            width: 300px;
+            background-color: #fff;
+            padding: 15px;
+            border-radius: 5px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            max-height: 800px;
+            overflow-y: auto;
+        }
+
+        .sidebar h3 {
+            margin-top: 0;
+            color: #333;
+        }
+
+        .force-item {
+            padding: 10px;
+            margin-bottom: 10px;
+            border: 2px solid #ddd;
+            border-radius: 5px;
+            background-color: #f9f9f9;
+        }
+
+        .force-item h4 {
+            margin: 0 0 10px 0;
+            font-size: 14px;
+        }
+
+        .force-control {
+            margin-bottom: 8px;
+        }
+
+        .force-control label {
+            display: block;
+            font-size: 12px;
+            margin-bottom: 3px;
+            color: #555;
+        }
+
+        .force-control input[type="number"] {
+            width: 100%;
+            padding: 5px;
+            border: 1px solid #ccc;
+            border-radius: 3px;
+            box-sizing: border-box;
         }
 
         canvas {
@@ -96,13 +150,21 @@
         <strong>Principle:</strong> A single force causes translation. Multiple forces cause both translation and rotation.
     </div>
 
-    <canvas id="simulationCanvas" width="1400" height="800"></canvas>
+    <div class="main-container">
+        <div class="sidebar">
+            <h3>Force Vectors</h3>
+            <div id="forcesList"></div>
+        </div>
 
-    <div class="controls">
-        <button id="addForceBtn">Add Force</button>
-        <button id="deleteForceBtn">Delete Force</button>
-        <button id="startBtn">Start</button>
-        <button id="resetBtn">Reset</button>
+        <div>
+            <canvas id="simulationCanvas" width="1400" height="800"></canvas>
+            <div class="controls">
+                <button id="addForceBtn">Add Force</button>
+                <button id="deleteForceBtn">Delete Force</button>
+                <button id="startBtn">Start</button>
+                <button id="resetBtn">Reset</button>
+            </div>
+        </div>
     </div>
 
     <div class="instructions">
@@ -123,6 +185,7 @@
         const deleteForceBtn = document.getElementById('deleteForceBtn');
         const startBtn = document.getElementById('startBtn');
         const resetBtn = document.getElementById('resetBtn');
+        const forcesList = document.getElementById('forcesList');
 
         const GRID_SIZE = 50;
         const BAR_WIDTH = 20;
@@ -176,6 +239,59 @@
         // Colors for forces
         const forceColors = ['#e74c3c', '#3498db', '#2ecc71', '#f39c12', '#9b59b6', '#1abc9c', '#e67e22', '#34495e'];
 
+        // Update force list UI
+        function updateForcesList() {
+            forcesList.innerHTML = '';
+
+            if (forces.length === 0) {
+                forcesList.innerHTML = '<p style="color: #999; font-size: 12px;">No forces added yet</p>';
+                return;
+            }
+
+            forces.forEach((force, index) => {
+                const color = forceColors[index % forceColors.length];
+                const angleInDegrees = (force.localAngle * 180 / Math.PI).toFixed(1);
+
+                const forceItem = document.createElement('div');
+                forceItem.className = 'force-item';
+                forceItem.style.borderColor = color;
+
+                forceItem.innerHTML = `
+                    <h4 style="color: ${color}">Force ${index + 1}</h4>
+                    <div class="force-control">
+                        <label>Magnitude:</label>
+                        <input type="number" id="magnitude-${index}" value="${force.magnitude.toFixed(1)}" step="5" min="0" ${isRunning ? 'disabled' : ''}>
+                    </div>
+                    <div class="force-control">
+                        <label>Angle (degrees, relative to bar):</label>
+                        <input type="number" id="angle-${index}" value="${angleInDegrees}" step="5" ${isRunning ? 'disabled' : ''}>
+                    </div>
+                `;
+
+                forcesList.appendChild(forceItem);
+
+                // Add event listeners
+                if (!isRunning) {
+                    const magnitudeInput = document.getElementById(`magnitude-${index}`);
+                    const angleInput = document.getElementById(`angle-${index}`);
+
+                    magnitudeInput.addEventListener('input', (e) => {
+                        const value = parseFloat(e.target.value);
+                        if (!isNaN(value) && value >= 0) {
+                            force.magnitude = value;
+                        }
+                    });
+
+                    angleInput.addEventListener('input', (e) => {
+                        const value = parseFloat(e.target.value);
+                        if (!isNaN(value)) {
+                            force.localAngle = value * Math.PI / 180;
+                        }
+                    });
+                }
+            });
+        }
+
         // Reset function
         function reset() {
             bar = {
@@ -196,6 +312,7 @@
             deleteForceBtn.style.backgroundColor = '#4CAF50';
             startBtn.textContent = 'Start';
             startBtn.classList.remove('running');
+            updateForcesList();
         }
 
         resetBtn.addEventListener('click', reset);
@@ -231,6 +348,7 @@
             } else {
                 startBtn.classList.remove('running');
             }
+            updateForcesList();
         });
 
         // Draw grid
@@ -510,6 +628,7 @@
                 addForceMode = false;
                 addForceBtn.style.backgroundColor = '#4CAF50';
                 canvas.style.cursor = 'default';
+                updateForcesList();
                 return;
             }
 
@@ -535,6 +654,7 @@
                 deleteForceMode = false;
                 deleteForceBtn.style.backgroundColor = '#4CAF50';
                 canvas.style.cursor = 'default';
+                updateForcesList();
                 return;
             }
 
@@ -602,6 +722,9 @@
             dragging = null;
             dragType = null;
         });
+
+        // Initialize UI
+        updateForcesList();
 
         // Start animation
         animate(performance.now());
